@@ -63,6 +63,10 @@ func (s *Service) Run() {
 			continue
 		}
 
+		if update.CallbackQuery != nil {
+			continue
+		}
+
 		if err := s.OnUserInput(bot, update.Message); err != nil {
 			log.Println("error handling user message:", err)
 		}

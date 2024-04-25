@@ -23,6 +23,16 @@ type SessionDto struct {
 	Situation string `json:"situation" validate:"required"`
 }
 
+type AgentDto struct {
+	ID    string `json:"id" validate:"required"`
+	Name  string `json:"name" validate:"required"`
+	About string `json:"about" validate:"required"`
+}
+
+type ListAgentsResponseDto struct {
+	Items []AgentDto `json:"items" validate:"required"`
+}
+
 func (s *Service) createAPIUser(name, about string) (string, error) {
 	data := &UserDto{
 		Name:  name,
@@ -62,4 +72,14 @@ func (s *Service) createAPISession(userId, agentId, situation string) (string, e
 	}
 
 	return user.ID, nil
+}
+
+func (s *Service) listAPIAgents() (*ListAgentsResponseDto, error) {
+	agents, err := GetCall[ListAgentsResponseDto](s.Api, s.Config.JulepBaseUrl, "agents")
+
+	if err != nil {
+		return nil, fmt.Errorf("error calling agents GET: %v", err)
+	}
+
+	return agents, nil
 }

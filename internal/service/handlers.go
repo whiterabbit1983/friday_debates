@@ -36,9 +36,27 @@ func (s *Service) OnStart(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error
 }
 
 func (s *Service) OnChars(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error {
-	greets := tgbotapi.NewMessage(message.Chat.ID, "Here is the list of characters:")
+	agents, err := s.listAPIAgents()
 
-	if _, err := bot.Send(greets); err != nil {
+	if err != nil {
+		return fmt.Errorf("error getting agents list: %v", err)
+	}
+
+	buttons := make([]tgbotapi.InlineKeyboardButton, 0, len(agents.Items))
+	text := "Here is the list of characters:\n"
+
+	for _, a := range agents.Items {
+		b := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("start with %s", a.Name), a.ID)
+		buttons = append(buttons, b)
+		text += fmt.Sprintf("- %s: %s", a.Name, a.About)
+	}
+
+	agentsList := tgbotapi.NewInlineKeyboardMarkup(buttons)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, text)
+	msg.ReplyMarkup = agentsList
+
+	if _, err := bot.Send(msg); err != nil {
 		return err
 	}
 
