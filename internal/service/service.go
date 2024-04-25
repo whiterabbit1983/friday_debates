@@ -10,13 +10,15 @@ type Service struct {
 	Config      Env
 	UserInfoBox *UserInfoBox
 	FlowStepBox *FlowStepBox
+	Api         *Api
 }
 
-func New(config Env, ub *UserInfoBox, fb *FlowStepBox) *Service {
+func New(config Env, ub *UserInfoBox, fb *FlowStepBox, api *Api) *Service {
 	return &Service{
 		Config:      config,
 		UserInfoBox: ub,
 		FlowStepBox: fb,
+		Api:         api,
 	}
 }
 

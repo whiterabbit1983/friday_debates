@@ -42,6 +42,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	svc := s.New(env, userInfoBox, flowStepBox)
+	api := s.NewAPI(env.JulepBaseUrl, env.JulepApiKey, "application/json")
+	svc := s.New(env, userInfoBox, flowStepBox, api)
 	svc.Run()
 }

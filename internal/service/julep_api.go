@@ -1,11 +1,7 @@
 package service
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 )
 
 type UserDto struct {
@@ -17,82 +13,53 @@ type CreateUserResponseDto struct {
 	ID string `json:"id" validate:"required"`
 }
 
+type CreateSessionResponseDto struct {
+	ID string `json:"id" validate:"required"`
+}
+
+type SessionDto struct {
+	UserID    string `json:"user_id" validate:"required"`
+	AgentID   string `json:"agent_id" validate:"required"`
+	Situation string `json:"situation" validate:"required"`
+}
+
 func (s *Service) createAPIUser(name, about string) (string, error) {
-	b, err := json.Marshal(UserDto{
+	data := &UserDto{
 		Name:  name,
 		About: about,
-	})
+	}
+
+	user, err := PostCall[CreateUserResponseDto](s.Api, data, s.Config.JulepBaseUrl, "users")
 
 	if err != nil {
-		return "", fmt.Errorf("error marshalling user: %v", err)
-	}
-
-	url := fmt.Sprintf("%s/%s", s.Config.JulepBaseUrl, "users")
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
-	if err != nil {
-		return "", fmt.Errorf("error creating request: %v", err)
-	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.Config.JulepApiKey))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error sending create user Julep request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("HTTP error %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading body: %v", err)
-	}
-
-	var user CreateUserResponseDto
-
-	if err = json.Unmarshal(body, &user); err != nil {
-		return "", fmt.Errorf("error unmarshalling response: %v", err)
+		return "", fmt.Errorf("error calling POST: %v", err)
 	}
 
 	return user.ID, nil
 }
 
 func (s *Service) getAPIUser(userId string) (*UserDto, error) {
-	url := fmt.Sprintf("%s/%s/%s", s.Config.JulepBaseUrl, "users", userId)
-
-	req, err := http.NewRequest("GET", url, nil)
+	user, err := GetCall[UserDto](s.Api, s.Config.JulepBaseUrl, "users", userId)
 
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error calling GET: %v", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.Config.JulepApiKey))
-	req.Header.Set("Content-Type", "application/json")
+	return user, nil
+}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+func (s *Service) createAPISession(userId, agentId, situation string) (string, error) {
+	data := &SessionDto{
+		UserID:    userId,
+		AgentID:   agentId,
+		Situation: situation,
+	}
+
+	user, err := PostCall[CreateSessionResponseDto](s.Api, data, s.Config.JulepBaseUrl, "users")
+
 	if err != nil {
-		return nil, fmt.Errorf("error sending create user Julep request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("HTTP error %d", resp.StatusCode)
+		return "", fmt.Errorf("error calling POST: %v", err)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading body: %v", err)
-	}
-
-	var user UserDto
-
-	if err = json.Unmarshal(body, &user); err != nil {
-		return nil, fmt.Errorf("error unmarshalling response: %v", err)
-	}
-
-	return &user, nil
+	return user.ID, nil
 }
