@@ -7,12 +7,16 @@ import (
 )
 
 type Service struct {
-	Config Env
+	Config      Env
+	UserInfoBox *UserInfoBox
+	FlowStepBox *FlowStepBox
 }
 
-func New(config Env) *Service {
+func New(config Env, ub *UserInfoBox, fb *FlowStepBox) *Service {
 	return &Service{
-		Config: config,
+		Config:      config,
+		UserInfoBox: ub,
+		FlowStepBox: fb,
 	}
 }
 
@@ -34,12 +38,31 @@ func (s *Service) Run() {
 			continue
 		}
 
-		// Example:
-		// log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+		if update.Message.IsCommand() {
+			var err error
 
-		// msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-		// msg.ReplyToMessageID = update.Message.MessageID
+			cmd := update.Message.Command()
 
-		// bot.Send(msg)
+			switch cmd {
+			case "start":
+				err = s.OnStart(bot, update.Message)
+			case "chars":
+				err = s.OnChars(bot, update.Message)
+			case "set_info":
+				err = s.OnSetInfo(bot, update.Message)
+			case "info":
+				err = s.OnGetInfo(bot, update.Message)
+			}
+
+			if err != nil {
+				log.Printf("error handling '/%s' command: %v", cmd, err)
+			}
+
+			continue
+		}
+
+		if err := s.OnUserInput(bot, update.Message); err != nil {
+			log.Println("error handling user message:", err)
+		}
 	}
 }
