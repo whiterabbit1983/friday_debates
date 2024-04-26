@@ -36,6 +36,17 @@ func initDB(db *chai.DB) {
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS session_info (
+			chat_id INT,
+            session_id TEXT
+        )
+    `)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
 
 func main() {

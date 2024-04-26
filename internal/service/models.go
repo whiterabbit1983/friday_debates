@@ -14,3 +14,8 @@ type FlowStep struct {
 	ChatID int64
 	Step   string
 }
+
+type SessionInfo struct {
+	SessionID string
+	ChatID    string
+}

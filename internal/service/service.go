@@ -35,11 +35,7 @@ func (s *Service) Run() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message == nil {
-			continue
-		}
-
-		if update.Message.IsCommand() {
+		if update.Message != nil && update.Message.IsCommand() {
 			var err error
 
 			cmd := update.Message.Command()
@@ -53,6 +49,8 @@ func (s *Service) Run() {
 				err = s.OnSetInfo(bot, update.Message)
 			case "info":
 				err = s.OnGetInfo(bot, update.Message)
+			case "stop":
+				err = s.OnResetSession(bot, update.Message)
 			}
 
 			if err != nil {
@@ -63,6 +61,12 @@ func (s *Service) Run() {
 		}
 
 		if update.CallbackQuery != nil {
+			err = s.CreateSession(bot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
+
+			if err != nil {
+				log.Printf("error creating session with agent ID %s: %v", update.CallbackQuery.Data, err)
+			}
+
 			continue
 		}
 

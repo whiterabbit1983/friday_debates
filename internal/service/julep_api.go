@@ -33,6 +33,20 @@ type ListAgentsResponseDto struct {
 	Items []AgentDto `json:"items" validate:"required"`
 }
 
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	Name    string `json:"name"`
+}
+
+type ChatRequest struct {
+	Messages []Message `json:"messages" validate:"required"`
+}
+
+type ChatResponseDto struct {
+	Response [][]Message `json:"response" validate:"required"`
+}
+
 func (s *Service) createAPIUser(name, about string) (string, error) {
 	data := &UserDto{
 		Name:  name,
@@ -82,4 +96,17 @@ func (s *Service) listAPIAgents() (*ListAgentsResponseDto, error) {
 	}
 
 	return agents, nil
+}
+
+func (s *Service) chatJulep(sessionId string, message Message) (*ChatResponseDto, error) {
+	req := &ChatRequest{
+		Messages: []Message{message},
+	}
+	r, err := PostCall[ChatResponseDto](s.Api, req, s.Config.JulepBaseUrl, "sessions", sessionId, "chat")
+
+	if err != nil {
+		return nil, fmt.Errorf("error calling session chat: %v", err)
+	}
+
+	return r, nil
 }
