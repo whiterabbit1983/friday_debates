@@ -5,19 +5,37 @@ import (
 	s "friday_debates/internal/service"
 	"log"
 
+	"github.com/chaisql/chai"
 	"github.com/joho/godotenv"
-	"github.com/objectbox/objectbox-go/objectbox"
+
 	"github.com/sethvargo/go-envconfig"
 )
 
-func initObjectBox() (*objectbox.ObjectBox, error) {
-	objectBox, err := objectbox.NewBuilder().Model(s.ObjectBoxModel()).Build()
+func initDB(db *chai.DB) {
+	err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS user_info (
+			chat_id INT,
+            name TEXT,
+			about TEXT,
+			user_id TEXT,
+			session_id TEXT
+        )
+    `)
 
 	if err != nil {
-		return nil, err
+		log.Fatalln(err)
 	}
 
-	return objectBox, nil
+	err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS flow_steps (
+			chat_id INT,
+            step TEXT
+        )
+    `)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
 
 func main() {
@@ -25,16 +43,11 @@ func main() {
 		log.Fatalln("error loading .env file")
 	}
 
-	ob, err := initObjectBox()
+	db, err := chai.Open("bot_db")
 
 	if err != nil {
-		log.Fatalln("error loading objects", err)
+		log.Fatalln(err)
 	}
-
-	defer ob.Close()
-
-	userInfoBox := s.BoxForUserInfo(ob)
-	flowStepBox := s.BoxForFlowStep(ob)
 
 	var env s.Env
 
@@ -42,7 +55,9 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	initDB(db)
+
 	api := s.NewAPI(env.JulepBaseUrl, env.JulepApiKey, "application/json")
-	svc := s.New(env, userInfoBox, flowStepBox, api)
+	svc := s.New(env, db, api)
 	svc.Run()
 }

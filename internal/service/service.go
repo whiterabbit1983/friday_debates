@@ -3,22 +3,21 @@ package service
 import (
 	"log"
 
+	"github.com/chaisql/chai"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Service struct {
-	Config      Env
-	UserInfoBox *UserInfoBox
-	FlowStepBox *FlowStepBox
-	Api         *Api
+	Config Env
+	Api    *Api
+	DB     *chai.DB
 }
 
-func New(config Env, ub *UserInfoBox, fb *FlowStepBox, api *Api) *Service {
+func New(config Env, db *chai.DB, api *Api) *Service {
 	return &Service{
-		Config:      config,
-		UserInfoBox: ub,
-		FlowStepBox: fb,
-		Api:         api,
+		Config: config,
+		Api:    api,
+		DB:     db,
 	}
 }
 

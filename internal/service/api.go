@@ -89,7 +89,7 @@ func doCall[T any](req *http.Request) (*T, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending create user Julep request: %v", err)
+		return nil, fmt.Errorf("error calling API: %v", err)
 	}
 	defer resp.Body.Close()
 

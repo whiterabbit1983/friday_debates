@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -13,10 +12,6 @@ const (
 	userInfoUpdated = "Your profile info has been updated"
 	stepAskName     = "askName"
 	stepAskAbout    = "askAbout"
-)
-
-var (
-	ErrUserNotCreated = errors.New("user not created")
 )
 
 func (s *Service) OnStart(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error {
@@ -46,7 +41,7 @@ func (s *Service) OnChars(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error
 	text := "Here is the list of characters:\n"
 
 	for _, a := range agents.Items {
-		b := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("start with %s", a.Name), a.ID)
+		b := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("⚔️ %s", a.Name), a.ID)
 		buttons = append(buttons, b)
 		text += fmt.Sprintf("- %s: %s", a.Name, a.About)
 	}
@@ -78,23 +73,16 @@ func (s *Service) OnSetInfo(bot *tgbotapi.BotAPI, message *tgbotapi.Message) err
 }
 
 func (s *Service) OnGetInfo(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error {
-	q := s.UserInfoBox.Query(UserInfo_.ChatID.Equals(message.Chat.ID))
-	users, err := q.Limit(1).Find()
+	user, err := s.getUserInfo(message.Chat.ID)
 
 	if err != nil {
-		return fmt.Errorf("error getting user info: %v", err)
-	}
-
-	if len(users) == 0 {
-		respMsg := tgbotapi.NewMessage(message.Chat.ID, "You have not set your user info yet, use /set_info")
+		respMsg := tgbotapi.NewMessage(message.Chat.ID, "You haven't created your user yet, please run /set_info")
 		if _, err := bot.Send(respMsg); err != nil {
 			return fmt.Errorf("error sending message: %v", err)
 		}
 
-		return ErrUserNotCreated
+		return nil
 	}
-
-	user := users[0]
 
 	info, err := s.getAPIUser(user.UserID)
 
@@ -110,55 +98,81 @@ func (s *Service) OnGetInfo(bot *tgbotapi.BotAPI, message *tgbotapi.Message) err
 	return nil
 }
 
-func (s *Service) OnUserInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error {
-	q := s.FlowStepBox.Query(FlowStep_.ChatID.Equals(message.Chat.ID))
-
-	steps, err := q.Limit(1).Find()
+func (s *Service) getUserInfo(chatId int64) (*UserInfo, error) {
+	row, err := s.DB.QueryRow(fmt.Sprintf("select * from user_info where chat_id = %d", chatId))
 
 	if err != nil {
-		return fmt.Errorf("error handling user input: %v", err)
+		return nil, fmt.Errorf("error getting user info: %v", err)
 	}
 
-	if len(steps) > 0 {
-		step := steps[0]
+	var user UserInfo
 
-		if step == nil {
-			return errors.New("step is nil")
+	err = row.StructScan(&user)
+
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling user info: %v", err)
+	}
+
+	return &user, nil
+}
+
+func (s *Service) getStep(chatId int64) (*FlowStep, error) {
+	row, err := s.DB.QueryRow(fmt.Sprintf("select * from flow_steps where chat_id = %d", chatId))
+
+	if err != nil {
+		return nil, fmt.Errorf("error getting flow info: %v", err)
+	}
+
+	var step FlowStep
+
+	err = row.StructScan(&step)
+
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling flow info: %v", err)
+	}
+
+	return &step, nil
+}
+
+func (s *Service) OnUserInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) error {
+	step, err := s.getStep(message.Chat.ID)
+
+	if err != nil {
+		return fmt.Errorf("error getting on input flow: %v", err)
+	}
+
+	switch step.Step {
+	case stepAskName:
+		if err := s.updateStep(message.Chat.ID, stepAskAbout); err != nil {
+			return fmt.Errorf("error updating flow step: %v", err)
 		}
 
-		switch step.Step {
-		case stepAskName:
-			if err := s.updateStep(message.Chat.ID, stepAskAbout); err != nil {
-				return fmt.Errorf("error updating flow step: %v", err)
-			}
+		if err := s.updateUser(message.Chat.ID, message.Text, "", "", ""); err != nil {
+			return fmt.Errorf("error setting user name: %v", err)
+		}
 
-			if err := s.updateUser(message.Chat.ID, message.Text, "", "", ""); err != nil {
-				return fmt.Errorf("error setting user name: %v", err)
-			}
+		aboutMsg := tgbotapi.NewMessage(message.Chat.ID, askAboutInfo)
 
-			aboutMsg := tgbotapi.NewMessage(message.Chat.ID, askAboutInfo)
+		if _, err := bot.Send(aboutMsg); err != nil {
+			return fmt.Errorf("error sending message: %v", err)
+		}
+	case stepAskAbout:
+		if err = s.removeStep(message.Chat.ID); err != nil {
+			return fmt.Errorf("error removing flow step: %v", err)
+		}
 
-			if _, err := bot.Send(aboutMsg); err != nil {
-				return fmt.Errorf("error sending message: %v", err)
-			}
-		case stepAskAbout:
-			if err = s.removeStep(message.Chat.ID); err != nil {
-				return fmt.Errorf("error removing flow step: %v", err)
-			}
+		if err = s.updateUser(message.Chat.ID, "", message.Text, "", ""); err != nil {
+			return fmt.Errorf("error setting user about: %v", err)
+		}
 
-			if err = s.updateUser(message.Chat.ID, "", message.Text, "", ""); err != nil {
-				return fmt.Errorf("error setting user about: %v", err)
-			}
+		if err = s.createJulepUser(message.Chat.ID); err != nil {
+			return fmt.Errorf("error creating Julep user: %v", err)
+		}
 
-			if err = s.createJulepUser(message.Chat.ID); err != nil {
-				return fmt.Errorf("error creating Julep user: %v", err)
-			}
+		aboutMsg := tgbotapi.NewMessage(message.Chat.ID, userInfoUpdated)
 
-			aboutMsg := tgbotapi.NewMessage(message.Chat.ID, userInfoUpdated)
-
-			if _, err := bot.Send(aboutMsg); err != nil {
-				return fmt.Errorf("error sending message: %v", err)
-			}
+		if _, err := bot.Send(aboutMsg); err != nil {
+			return fmt.Errorf("error sending message: %v", err)
 		}
 	}
 
@@ -166,17 +180,10 @@ func (s *Service) OnUserInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) e
 }
 
 func (s *Service) createJulepUser(chatId int64) error {
-	q := s.UserInfoBox.Query(UserInfo_.ChatID.Equals(chatId))
-	users, err := q.Limit(1).Find()
+	user, err := s.getUserInfo(chatId)
 
 	if err != nil {
 		return fmt.Errorf("error getting user info: %v", err)
-	}
-
-	user := users[0]
-
-	if user == nil {
-		return errors.New("user is nil")
 	}
 
 	newUserId, err := s.createAPIUser(user.Name, user.About)
@@ -193,21 +200,29 @@ func (s *Service) createJulepUser(chatId int64) error {
 }
 
 func (s *Service) updateStep(chatId int64, newStep string) error {
-	q := s.FlowStepBox.Query(FlowStep_.ChatID.Equals(chatId))
-	if _, err := q.Remove(); err != nil {
-		return fmt.Errorf("error updating step: %v", err)
+	var upsert bool
+
+	_, err := s.DB.QueryRow(fmt.Sprintf("select * from flow_steps where chat_id = %d limit 1", chatId))
+
+	if err != nil {
+		upsert = true
 	}
 
-	if _, err := s.FlowStepBox.Put(&FlowStep{ChatID: chatId, Step: newStep}); err != nil {
-		return fmt.Errorf("error putting new step: %v", err)
+	if upsert {
+		if err := s.DB.Exec(fmt.Sprintf("insert into flow_steps (chat_id, step) values (%d, '%s')", chatId, newStep)); err != nil {
+			return fmt.Errorf("error inserting step: %v", err)
+		}
+	} else {
+		if err := s.DB.Exec(fmt.Sprintf("update flow_steps set step = '%s' where chat_id = %d", newStep, chatId)); err != nil {
+			return fmt.Errorf("error updating step: %v", err)
+		}
 	}
 
 	return nil
 }
 
 func (s *Service) removeStep(chatId int64) error {
-	q := s.FlowStepBox.Query(FlowStep_.ChatID.Equals(chatId))
-	if _, err := q.Remove(); err != nil {
+	if err := s.DB.Exec(fmt.Sprintf("delete from flow_steps where chat_id = %d", chatId)); err != nil {
 		return fmt.Errorf("error updating step: %v", err)
 	}
 
@@ -215,52 +230,64 @@ func (s *Service) removeStep(chatId int64) error {
 }
 
 func (s *Service) updateUser(chatId int64, name, about, userId, sessionId string) error {
-	q := s.UserInfoBox.Query(UserInfo_.ChatID.Equals(chatId))
-	users, err := q.Find()
+	var upsert bool
+
+	_, err := s.DB.QueryRow(fmt.Sprintf("select * from flow_steps where chat_id = %d limit 1", chatId))
 
 	if err != nil {
-		return fmt.Errorf("error updating user: %v", err)
+		upsert = true
 	}
-
-	if len(users) == 0 {
-		return fmt.Errorf("no users found for chat ID: %d", chatId)
-	}
-
-	newName := users[0].Name
-	newAbout := users[0].About
-	newUserId := users[0].UserID
-	newSessionId := users[0].SessionID
 
 	if len(name) > 0 {
-		newName = name
+		if upsert {
+			err = s.DB.Exec(fmt.Sprintf("insert into user_info (name, chat_id) values ('%s', %d)", name, chatId))
+			upsert = false
+		} else {
+			err = s.DB.Exec(fmt.Sprintf("update user_info set name = '%s' where chat_id = %d", name, chatId))
+		}
+
+		if err != nil {
+			return fmt.Errorf("error updating user name: %v", err)
+		}
 	}
 
 	if len(about) > 0 {
-		newAbout = about
+		if upsert {
+			err = s.DB.Exec(fmt.Sprintf("insert into user_info (about, chat_id) values ('%s', %d)", about, chatId))
+			upsert = false
+		} else {
+			err = s.DB.Exec(fmt.Sprintf("update user_info set about = '%s' where chat_id = %d", about, chatId))
+		}
+
+		if err != nil {
+			return fmt.Errorf("error updating user about info: %v", err)
+		}
 	}
 
 	if len(userId) > 0 {
-		newUserId = userId
+		if upsert {
+			err = s.DB.Exec(fmt.Sprintf("insert into user_info (user_id, chat_id) values ('%s', %d)", userId, chatId))
+			upsert = false
+		} else {
+			err = s.DB.Exec(fmt.Sprintf("update user_info set user_id = '%s' where chat_id = %d", userId, chatId))
+		}
+
+		if err != nil {
+			return fmt.Errorf("error updating user's user_id: %v", err)
+		}
 	}
 
 	if len(sessionId) > 0 {
-		newSessionId = sessionId
-	}
+		if upsert {
+			err = s.DB.Exec(fmt.Sprintf("insert into user_info (session_id, chat_id) values ('%s', %d)", sessionId, chatId))
+			upsert = false
+		} else {
+			err = s.DB.Exec(fmt.Sprintf("update user_info set session_id = '%s' where chat_id = %d", sessionId, chatId))
+		}
 
-	if _, err := q.Remove(); err != nil {
-		return fmt.Errorf("error removing old user: %v", err)
-	}
-
-	newUser := &UserInfo{
-		ChatID:    chatId,
-		Name:      newName,
-		About:     newAbout,
-		UserID:    newUserId,
-		SessionID: newSessionId,
-	}
-
-	if _, err := s.UserInfoBox.Put(newUser); err != nil {
-		return fmt.Errorf("error putting user: %v", err)
+		if err != nil {
+			return fmt.Errorf("error updating user's session_id: %v", err)
+		}
 	}
 
 	return nil
